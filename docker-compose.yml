@@ -1,0 +1,82 @@
+# ============================================================
+# docker-compose 文件：一条命令启动整个系统
+#   app（后端 Spring Boot） + mysql（数据库） + redis（缓存）
+#
+# 使用方式（在【本文件所在目录】打开命令行）：
+#   docker compose up -d --build   # 构建并后台启动全部服务（首次要等编译，较久）
+#   docker compose ps              # 查看所有容器状态（都 running 即成功）
+#   docker compose logs -f app     # 查看后端日志（看是否启动成功、有没有报错）
+#   docker compose down            # 停止并删除容器（数据保留）
+#   docker compose down -v         # 停止并【删除全部数据】（慎用）
+#
+# ⚠️ 第 1 次启动前：先到 application.yml 里把 ai.api-key 填成你的硅基流动密钥。
+# ============================================================
+
+services:
+  # ----- 服务 1：MySQL 8 数据库 -----
+  mysql:
+    image: mysql:8.0
+    container_name: rag-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "root123"   # root 密码（和 app 连接配置保持一致）
+      MYSQL_DATABASE: "rag_db"         # 自动创建数据库
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"            # 宿主机也能连（如 Navicat/IDEA），方便调试
+    volumes:
+      - mysql-data:/var/lib/mysql                # 数据持久化
+      - ./src/main/resources/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # ↑ 关键：把建表脚本挂进去，MySQL 首次启动会自动执行，免去手动建表
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      # 健康检查：MySQL 真正就绪前，app 不会启动（防止后端先启动连不上库）
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot123"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # ----- 服务 2：Redis 7 缓存 -----
+  redis:
+    image: redis:7
+    container_name: rag-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+  # ----- 服务 3：后端应用（用当前目录的 Dockerfile 构建） -----
+  app:
+    build:
+      context: .            # 构建上下文 = 当前目录（Dockerfile 在这里）
+      # 开启 BuildKit 缓存挂载：第二次构建不再重下 Maven 依赖，大幅加速
+      # （新版 Docker Compose 默认开启，这里显式声明确保生效）
+      # 注：如提示 unknown flag，可删掉这行，多数新版环境已默认开启
+    container_name: rag-app
+    restart: unless-stopped
+    depends_on:
+      # 依赖关系：等 MySQL 健康检查通过后再启动 app，Redis 启动即可
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      # 环境变量覆盖 application.yml 里的配置（Spring Boot 环境变量优先级更高）
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/rag_db?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
+      # ↑ 注意：容器内主机名写 "mysql"（服务名），通过 docker 内部网络访问，不是 localhost
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root123
+      SPRING_DATA_REDIS_HOST: redis   # 同理，Redis 主机名写服务名 "redis"
+      # AI 配置通过环境变量注入（生产环境推荐，密钥不进镜像、不进 Git）
+      # 使用前取消注释并改成你的硅基流动密钥：
+      # AI_API_KEY: sk-xxxxxxxxxxxxxxxx
+    ports:
+      - "8080:8080"          # 宿主机 8080 -> 容器 8080，浏览器访问入口
+
+# ---------- 数据卷：容器删了数据不丢 ----------
+volumes:
+  mysql-data:
+  redis-data:

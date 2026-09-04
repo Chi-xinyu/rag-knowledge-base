@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识库智能问答系统</title>
+    <style>
+        /* ===== 全局样式 ===== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f4f3ee;
+            color: #1a1b1c;
+            min-height: 100vh;
+        }
+        .container { max-width: 860px; margin: 0 auto; padding: 32px 20px 60px; }
+
+        /* ===== 顶部标题 ===== */
+        header { text-align: center; margin-bottom: 32px; }
+        header h1 { font-size: 28px; font-weight: 700; }
+        header p { color: #6b7280; margin-top: 8px; font-size: 14px; }
+
+        /* ===== 卡片通用 ===== */
+        .card {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 14px;
+            padding: 22px;
+            margin-bottom: 20px;
+        }
+        .card h2 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+        .card .desc { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+
+        /* ===== 表单元素 ===== */
+        label { display: block; font-size: 13px; color: #444; margin: 12px 0 6px; font-weight: 500; }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color .2s;
+        }
+        input[type="text"]:focus, textarea:focus { border-color: #6b8fe0; }
+        textarea { resize: vertical; min-height: 110px; }
+        button {
+            margin-top: 14px;
+            padding: 10px 22px;
+            border: none;
+            border-radius: 8px;
+            background: #5b7fe6;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .2s;
+        }
+        button:hover { background: #4a6bd0; }
+        button:disabled { background: #b9c4ea; cursor: not-allowed; }
+
+        /* ===== 状态提示 ===== */
+        .msg { margin-top: 12px; font-size: 13px; padding: 10px 12px; border-radius: 8px; display: none; }
+        .msg.ok { display: block; background: #eaf7ec; color: #2c7a3b; }
+        .msg.err { display: block; background: #fdecec; color: #b02a2a; }
+        .msg.info { display: block; background: #eef3fc; color: #35538f; }
+
+        /* ===== 问答展示区 ===== */
+        .answer-area { display: none; }
+        .answer-area .answer-box {
+            background: #f8f9fc;
+            border-radius: 10px;
+            padding: 16px;
+            line-height: 1.8;
+            font-size: 15px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .answer-area .refs { margin-top: 16px; }
+        .answer-area .refs h3 { font-size: 14px; color: #555; margin-bottom: 8px; }
+        .answer-area .ref-item {
+            background: #fff;
+            border-left: 3px solid #5b7fe6;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-radius: 0 8px 8px 0;
+            font-size: 13px;
+            color: #555;
+            line-height: 1.6;
+        }
+        .loading { color: #5b7fe6; font-size: 13px; margin-top: 12px; display: none; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>📚 知识库智能问答系统</h1>
+        <p>上传文档建立知识库 → 提问，系统基于知识库内容智能回答（RAG）</p>
+    </header>
+
+    <!-- ① 上传文档 -->
+    <div class="card">
+        <h2>① 上传文档</h2>
+        <div class="desc">把知识资料填进文本框，系统会自动切片、向量化并建立索引。</div>
+        <label>文档标题</label>
+        <input type="text" id="docTitle" placeholder="例如：Spring Boot 简介">
+        <label>文档内容</label>
+        <textarea id="docContent" placeholder="把文档正文粘贴到这里……"></textarea>
+        <button id="btnUpload">上传并建立索引</button>
+        <div class="msg" id="uploadMsg"></div>
+    </div>
+
+    <!-- ② 提问 -->
+    <div class="card">
+        <h2>② 提问</h2>
+        <div class="desc">输入问题，系统先从知识库检索相关内容，再由 AI 基于资料回答。</div>
+        <label>你的问题</label>
+        <input type="text" id="question" placeholder="例如：Spring Boot 能做什么？">
+        <button id="btnAsk">提问</button>
+        <div class="loading" id="loading">AI 思考中，请稍候……（首次调用可能需要几秒）</div>
+        <div class="msg" id="askMsg"></div>
+    </div>
+
+    <!-- ③ 答案展示 -->
+    <div class="card answer-area" id="answerArea">
+        <h2>③ 回答</h2>
+        <div class="answer-box" id="answerBox"></div>
+        <div class="refs">
+            <h3>📎 检索到的参考资料</h3>
+            <div id="refList"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 接口地址：前端和 Spring Boot 同源，直接写相对路径即可
+    const API_DOC = "/api/rag/document";   // 上传文档（POST）
+    const API_ASK = "/api/rag/ask";        // 提问（GET）
+
+    // ===== 上传文档 =====
+    document.getElementById("btnUpload").addEventListener("click", async () => {
+        const title = document.getElementById("docTitle").value.trim();
+        const content = document.getElementById("docContent").value.trim();
+        const msg = document.getElementById("uploadMsg");
+        msg.className = "msg";
+        msg.style.display = "none";
+
+        if (!title || !content) {
+            msg.className = "msg err";
+            msg.textContent = "请先填写标题和内容";
+            msg.style.display = "block";
+            return;
+        }
+
+        const btn = document.getElementById("btnUpload");
+        btn.disabled = true;
+        btn.textContent = "正在上传…";
+        try {
+            // POST 请求：把标题和内容以 JSON 发给后端
+            const resp = await fetch(API_DOC, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: title, content: content })
+            });
+            const data = await resp.json();
+            if (data.code === 200) {
+                msg.className = "msg ok";
+                msg.textContent = "✅ 上传成功！文档「" + title + "」已切片并建立索引，可以提问了。";
+                document.getElementById("docContent").value = ""; // 清空内容
+            } else {
+                msg.className = "msg err";
+                msg.textContent = "上传失败：" + (data.message || "未知错误");
+            }
+        } catch (e) {
+            msg.className = "msg err";
+            msg.textContent = "请求失败，请确认后端服务已启动：" + e.message;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "上传并建立索引";
+        }
+        msg.style.display = "block";
+    });
+
+    // ===== 提问 =====
+    document.getElementById("btnAsk").addEventListener("click", async () => {
+        const question = document.getElementById("question").value.trim();
+        const loading = document.getElementById("loading");
+        const msg = document.getElementById("askMsg");
+        msg.style.display = "none";
+        loading.style.display = "none";
+
+        if (!question) {
+            msg.className = "msg err";
+            msg.textContent = "请先输入问题";
+            msg.style.display = "block";
+            return;
+        }
+
+        const btn = document.getElementById("btnAsk");
+        btn.disabled = true;
+        loading.style.display = "block";
+        try {
+            // GET 请求：问题作为 URL 参数传给后端
+            const resp = await fetch(API_ASK + "?question=" + encodeURIComponent(question));
+            const data = await resp.json();
+            if (data.code === 200) {
+                showAnswer(data.data);
+            } else {
+                msg.className = "msg err";
+                msg.textContent = "提问失败：" + (data.message || "未知错误");
+                msg.style.display = "block";
+            }
+        } catch (e) {
+            msg.className = "msg err";
+            msg.textContent = "请求失败，请确认后端服务已启动：" + e.message;
+            msg.style.display = "block";
+        } finally {
+            btn.disabled = false;
+            loading.style.display = "none";
+        }
+    });
+
+    // ===== 展示答案：把"答案 + 参考片段"拆开显示 =====
+    function showAnswer(text) {
+        document.getElementById("answerArea").style.display = "block";
+        // 后端返回格式：答案 + "\n\n--- 参考的知识片段 ---\n" + 片段列表
+        const marker = "--- 参考的知识片段 ---";
+        let answer = text;
+        let refs = [];
+        const idx = text.indexOf(marker);
+        if (idx >= 0) {
+            answer = text.substring(0, idx).trim();
+            const refBlock = text.substring(idx + marker.length).trim();
+            // 每行以 "· " 开头，去掉前缀作为一条参考
+            refs = refBlock.split("\n")
+                .map(s => s.replace(/^·\s*/, "").trim())
+                .filter(s => s.length > 0);
+        }
+        document.getElementById("answerBox").textContent = answer;
+        const refList = document.getElementById("refList");
+        refList.innerHTML = "";
+        refs.forEach(r => {
+            const div = document.createElement("div");
+            div.className = "ref-item";
+            div.textContent = r;
+            refList.appendChild(div);
+        });
+        // 滚动到答案区
+        document.getElementById("answerArea").scrollIntoView({ behavior: "smooth" });
+    }
+</script>
+</body>
+</html>

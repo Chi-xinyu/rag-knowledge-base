@@ -1,0 +1,58 @@
+# ============================================================
+# Spring Boot 配置文件（application.yml）
+# 项目启动时 Spring 会自动读取这个文件，把里面的配置加载进应用。
+# ============================================================
+
+# server 开头 = 配置内置 Tomcat 服务器的行为
+server:
+  # 启动后监听的端口：http://localhost:8080 就是访问入口
+  port: 8080
+
+# spring 开头 = Spring 框架自身的配置
+spring:
+  application:
+    # 应用名：方便日志区分，也给后面"服务发现/配置中心"用，现在只是展示
+    name: rag-knowledge-base
+
+  # ===== 第 2 步新增：MySQL 数据源配置 =====
+  # 告诉 Spring："你的数据库连哪个地址、用什么账号密码"
+  datasource:
+    # 连接地址：jdbc:mysql:// 服务器IP:端口/数据库名?参数
+    # 参数 useSSL=false 本机开发不需要加密；serverTimezone 设时区避免时间差
+    url: jdbc:mysql://localhost:3306/rag_db?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
+    username: root          # 账号（和 docker-compose.yml 里的 MYSQL_ROOT_PASSWORD 对应）
+    password: root123       # 密码（docker-compose.yml 里设的）
+    driver-class-name: com.mysql.cj.jdbc.Driver   # MySQL 驱动类（固定写法）
+
+  # ===== 第 2 步新增：Redis 缓存配置 =====
+  data:
+    redis:
+      host: localhost   # Redis 地址（本机）
+      port: 6379        # Redis 端口（和 docker-compose.yml 一致）
+      # 我们没给 Redis 设密码，所以不用写 password
+
+# ===== 第 3 步新增：大模型 AI 配置（硅基流动 SiliconFlow） =====
+# 在 https://cloud.siliconflow.cn 注册后，点"API 密钥"新建一个，填到下面
+ai:
+  base-url: https://api.siliconflow.cn/v1   # API 地址（OpenAI 兼容格式）
+  # ⚠️ 密钥用"环境变量"方式读取，值从外面注入，不进 Git，安全！
+  # 格式 ${AI_API_KEY:默认值}：找不到环境变量时用默认值（这里是空串）
+  api-key: ${AI_API_KEY:}
+  # 向量化模型：把文字变成一串数字向量。bge-m3 免费、中文效果好
+  embedding-model: BAAI/bge-m3
+  # 生成答案的模型：DeepSeek-V3 效果好；想免费可用 Qwen3-8B
+  chat-model: deepseek-ai/DeepSeek-V3
+  # 检索时返回最相关的几段文档（TopK），越大上下文越多但也越贵
+  top-k: 3
+  # 向量的维度（bge-m3 固定是 1024 维，一般不用改）
+  embedding-dim: 1024
+
+# ===== 第 2 步新增：MyBatis-Plus 配置 =====
+mybatis-plus:
+  configuration:
+    # 控制台打印 SQL 语句。新手强烈建议开着：能看到程序到底执行了什么 SQL，方便排查
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      # 数据库主键自增（MySQL 的 AUTO_INCREMENT），MyBatis-Plus 插入时才知道主键怎么生成
+      id-type: auto
