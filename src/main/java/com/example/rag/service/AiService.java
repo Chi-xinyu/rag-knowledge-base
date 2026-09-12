@@ -9,10 +9,14 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * 【AI 服务类】——封装对"大模型 API"的两个核心调用。
@@ -107,5 +111,100 @@ public class AiService {
 
         // 4. 取答案：标准格式是 choices[0].message.content
         return resp.path("choices").path(0).path("message").path("content").asText();
+    }
+
+    /**
+     * 【原始对话】直接发一条 prompt，不做任何拼接（管理员端 Prompt 模板用）。
+     * @param prompt 完整提示词（模板渲染后的最终内容）
+     * @return 大模型回复文本
+     */
+    public String chatRaw(String prompt) {
+        List<Map<String, String>> messages = new ArrayList<>();
+        Map<String, String> user = new HashMap<>();
+        user.put("role", "user");
+        user.put("content", prompt);
+        messages.add(user);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", aiProperties.getChatModel());
+        body.put("messages", messages);
+        body.put("temperature", 0.3);
+
+        JsonNode resp = restClient.post()
+                .uri(aiProperties.getBaseUrl() + "/chat/completions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(JsonNode.class);
+
+        return resp.path("choices").path(0).path("message").path("content").asText();
+    }
+
+    /**
+     * 【对话生成 · 流式版】——第 4 步新增。
+     *
+     * 和 chat() 的区别：请求里带 "stream": true，
+     * 大模型会"一个字一个字地"返回内容，而不是一次性给全文。
+     * 我们边读边把每个增量片段回调给 onDelta，前端就能实现"打字机"效果。
+     *
+     * @param question 用户问题
+     * @param context  检索到的资料
+     * @param onDelta  每收到一段新文字就调用它（参数就是这一段文字）
+     */
+    public void chatStream(String question, String context, Consumer<String> onDelta) {
+        // 1. 构造消息列表（和 chat() 完全一样：system 约束 + user 带资料和问题）
+        List<Map<String, String>> messages = new ArrayList<>();
+
+        Map<String, String> system = new HashMap<>();
+        system.put("role", "system");
+        system.put("content", "你是一个知识库问答助手。请严格根据下面提供的【参考资料】回答用户问题。"
+                + "如果资料中没有相关信息，请明确回答'资料中没有找到相关内容'，不要编造。");
+        messages.add(system);
+
+        Map<String, String> user = new HashMap<>();
+        user.put("role", "user");
+        user.put("content", "【参考资料】\n" + context + "\n\n【用户问题】\n" + question);
+        messages.add(user);
+
+        // 2. 构造请求体——多了一行关键配置：stream=true（开启流式返回）
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", aiProperties.getChatModel());
+        body.put("messages", messages);
+        body.put("temperature", 0.3);
+        body.put("stream", true); // ⭐ 关键：让大模型流式返回
+
+        // 3. 发请求，并用 exchange() 拿到原始响应流，逐行读取
+        restClient.post()
+                .uri(aiProperties.getBaseUrl() + "/chat/completions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .exchange((request, response) -> {
+                    // 4. 状态码不是 2xx（如 401 密钥错误）→ 把错误内容读出来抛异常
+                    if (!response.getStatusCode().is2xxSuccessful()) {
+                        String errBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                        throw new RuntimeException("AI 接口调用失败：" + response.getStatusCode() + " " + errBody);
+                    }
+
+                    // 5. 逐行读 SSE 流（OpenAI 流式协议：每行以 "data: " 开头，以 "data: [DONE]" 结束）
+                    try (BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            // 只处理数据行
+                            if (line == null || !line.startsWith("data:")) continue;
+                            String data = line.substring(5).trim();
+                            // 流结束标记
+                            if (data.isEmpty() || "[DONE]".equals(data)) break;
+
+                            // 每行是一个 JSON：从 choices[0].delta.content 取增量文字
+                            JsonNode node = objectMapper.readTree(data);
+                            JsonNode delta = node.path("choices").path(0).path("delta").path("content");
+                            if (delta.isTextual() && !delta.asText().isEmpty()) {
+                                onDelta.accept(delta.asText()); // 把这段文字回传给调用方
+                            }
+                        }
+                    }
+                    return null;
+                });
     }
 }

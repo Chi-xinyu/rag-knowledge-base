@@ -5,250 +5,661 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>知识库智能问答系统</title>
     <style>
-        /* ===== 全局样式 ===== */
+        /* ==========================================================
+           全局设计令牌（Design Tokens）——统一配色/圆角/阴影
+        ========================================================== */
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --sidebar-bg: #171c28;          /* 侧栏深色底 */
+            --sidebar-text: #aeb6c8;        /* 侧栏次级文字 */
+            --sidebar-text-active: #ffffff;  /* 侧栏高亮文字 */
+            --main-bg: #f7f7f8;              /* 主区背景 */
+            --card-bg: #ffffff;
+            --border: #ececef;
+            --text: #1d2129;
+            --text-2: #6b7280;
+            --accent: #4f6ef7;               /* 主色：靛蓝 */
+            --accent-soft: #eef1fe;
+            --danger: #e5484d;
+            --radius: 14px;
+            --shadow: 0 1px 3px rgba(16,24,40,0.04), 0 8px 24px rgba(16,24,40,0.06);
+        }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-            background: #f4f3ee;
-            color: #1a1b1c;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                         "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: var(--main-bg);
+            color: var(--text);
             min-height: 100vh;
         }
-        .container { max-width: 860px; margin: 0 auto; padding: 32px 20px 60px; }
+        button { font-family: inherit; }
 
-        /* ===== 顶部标题 ===== */
-        header { text-align: center; margin-bottom: 32px; }
-        header h1 { font-size: 28px; font-weight: 700; }
-        header p { color: #6b7280; margin-top: 8px; font-size: 14px; }
+        /* ==========================================================
+           布局：左侧深色会话栏 + 右侧主区
+        ========================================================== */
+        .layout { display: flex; min-height: 100vh; }
 
-        /* ===== 卡片通用 ===== */
+        /* ===== 左侧栏 ===== */
+        .sidebar {
+            width: 272px;
+            flex-shrink: 0;
+            background: var(--sidebar-bg);
+            display: flex;
+            flex-direction: column;
+            padding: 16px 12px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        .side-logo {
+            display: flex; align-items: center; gap: 10px;
+            padding: 6px 8px 18px; color: #fff; font-size: 15px; font-weight: 600;
+            letter-spacing: .2px;
+        }
+        .side-logo .logo-badge {
+            width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+            background: linear-gradient(135deg, #4f6ef7, #7b5cf0);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+        }
+        .side-logo small { display: block; font-size: 11px; color: var(--sidebar-text); font-weight: 400; }
+
+        /* 新建会话 */
+        .side-new {
+            width: 100%; padding: 10px 0; margin-bottom: 16px;
+            border: 1px solid rgba(255,255,255,0.14); border-radius: 10px;
+            background: rgba(255,255,255,0.06); color: #e8ebf4;
+            font-size: 13px; font-weight: 500; cursor: pointer; margin-top: 0;
+            transition: all .18s;
+        }
+        .side-new:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.24); }
+
+        /* 会话列表 */
+        .session-list { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+        .session-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 10px; border-radius: 10px;
+            color: var(--sidebar-text); font-size: 13px; cursor: pointer;
+            transition: background .15s;
+        }
+        .session-item:hover { background: rgba(255,255,255,0.06); color: #d7dbe8; }
+        .session-item.active { background: rgba(79,110,247,0.28); color: #fff; }
+        .session-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .session-item .del {
+            color: #6d7689; font-size: 12px; padding: 2px 6px; border-radius: 6px;
+            cursor: pointer; margin-top: 0; opacity: 0; transition: all .15s;
+        }
+        .session-item:hover .del { opacity: 1; }
+        .session-item .del:hover { color: #ff8a8e; background: rgba(229,72,77,0.18); }
+        .session-empty { font-size: 12px; color: #5f6878; text-align: center; padding: 28px 8px; line-height: 1.9; }
+
+        /* 底部用户 */
+        .side-user {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 8px 2px; border-top: 1px solid rgba(255,255,255,0.08);
+            margin-top: 12px;
+        }
+        .side-user .avatar {
+            width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+            background: linear-gradient(135deg, #4f6ef7, #7b5cf0);
+            color: #fff; font-size: 13px; font-weight: 600;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .side-user .user-name {
+            flex: 1; margin-left: 10px; font-size: 13px; color: #e8ebf4; font-weight: 500;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .side-user .logout {
+            padding: 5px 10px; border: none; border-radius: 8px; margin-top: 0;
+            background: rgba(255,255,255,0.08); color: var(--sidebar-text); font-size: 12px;
+            cursor: pointer; transition: all .15s; flex-shrink: 0;
+        }
+        .side-user .logout:hover { background: rgba(229,72,77,0.2); color: #ff8a8e; }
+
+        /* ===== 右侧主区 ===== */
+        .main { flex: 1; min-width: 0; }
+        .container { max-width: 840px; margin: 0 auto; padding: 28px 24px 80px; }
+
+        /* 顶部 */
+        header { margin-bottom: 24px; }
+        header h1 { font-size: 20px; font-weight: 700; letter-spacing: .3px; }
+        header p { color: var(--text-2); margin-top: 6px; font-size: 13px; }
+        .cur-conv {
+            display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
+            font-size: 12px; color: var(--text-2); background: #fff;
+            border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px;
+        }
+        .cur-conv::before { content: "●"; color: var(--accent); font-size: 8px; }
+
+        /* ===== 卡片（通用） ===== */
         .card {
-            background: #fff;
-            border: 1px solid rgba(0,0,0,0.08);
-            border-radius: 14px;
-            padding: 22px;
-            margin-bottom: 20px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 20px;
+            margin-bottom: 16px;
         }
-        .card h2 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
-        .card .desc { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+        .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+        .card .desc { font-size: 12px; color: var(--text-2); margin-bottom: 14px; line-height: 1.7; }
 
-        /* ===== 表单元素 ===== */
-        label { display: block; font-size: 13px; color: #444; margin: 12px 0 6px; font-weight: 500; }
+        /* ===== 上传文档（可折叠） ===== */
+        .upload-head {
+            display: flex; align-items: center; justify-content: space-between;
+            cursor: pointer; user-select: none;
+        }
+        .upload-head .arrow { transition: transform .2s; font-size: 12px; color: var(--text-2); }
+        .upload-head.open .arrow { transform: rotate(180deg); }
+        .upload-body { display: none; margin-top: 14px; }
+        .upload-body.show { display: block; }
+        .upload-file-box {
+            background: var(--accent-soft); border: 1px dashed var(--accent);
+            border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;
+        }
+        .upload-file-box .file-label { font-size: 12px; font-weight: 600; color: #3a52c7; margin-bottom: 8px; }
+        .upload-file-box input[type="file"] { font-size: 12px; color: #444; }
+        .btn {
+            margin-top: 10px; padding: 8px 18px; border: none; border-radius: 9px;
+            background: var(--accent); color: #fff; font-size: 13px; font-weight: 500;
+            cursor: pointer; transition: all .15s;
+        }
+        .btn:hover { background: #3d5ae0; }
+        .btn:disabled { background: #a9b7f3; cursor: not-allowed; }
+        .btn.ghost {
+            background: transparent; border: 1px solid var(--border); color: var(--text-2); margin-top: 10px;
+        }
+        .btn.ghost:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+        label { display: block; font-size: 12px; color: #555; margin: 12px 0 6px; font-weight: 500; }
         input[type="text"], textarea {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #d9d9d9;
-            border-radius: 8px;
-            font-size: 14px;
-            font-family: inherit;
-            outline: none;
-            transition: border-color .2s;
+            width: 100%; padding: 9px 12px;
+            border: 1px solid #e3e3e8; border-radius: 9px;
+            font-size: 13px; font-family: inherit; outline: none;
+            transition: border-color .15s, box-shadow .15s;
+            background: #fbfbfc;
         }
-        input[type="text"]:focus, textarea:focus { border-color: #6b8fe0; }
-        textarea { resize: vertical; min-height: 110px; }
-        button {
-            margin-top: 14px;
-            padding: 10px 22px;
-            border: none;
-            border-radius: 8px;
-            background: #5b7fe6;
-            color: #fff;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background .2s;
+        input[type="text"]:focus, textarea:focus {
+            border-color: var(--accent); background: #fff;
+            box-shadow: 0 0 0 3px rgba(79,110,247,0.12);
         }
-        button:hover { background: #4a6bd0; }
-        button:disabled { background: #b9c4ea; cursor: not-allowed; }
+        textarea { resize: vertical; min-height: 90px; }
 
-        /* ===== 状态提示 ===== */
-        .msg { margin-top: 12px; font-size: 13px; padding: 10px 12px; border-radius: 8px; display: none; }
-        .msg.ok { display: block; background: #eaf7ec; color: #2c7a3b; }
-        .msg.err { display: block; background: #fdecec; color: #b02a2a; }
-        .msg.info { display: block; background: #eef3fc; color: #35538f; }
+        /* ===== 对话气泡流 ===== */
+        .chat-flow { display: flex; flex-direction: column; gap: 10px; }
+        .bubble {
+            max-width: 86%; padding: 10px 14px; border-radius: 12px;
+            font-size: 13.5px; line-height: 1.8; white-space: pre-wrap; word-break: break-word;
+        }
+        .bubble.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+        .bubble.assistant { align-self: flex-start; background: #fff; border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+        .bubble .who { font-size: 11px; color: var(--text-2); margin-bottom: 4px; }
+        .bubble.user .who { color: rgba(255,255,255,0.75); }
+        .chat-empty { font-size: 12px; color: #b0b4bd; text-align: center; padding: 24px 0; }
 
-        /* ===== 问答展示区 ===== */
+        /* ===== 问答展示区（新回答） ===== */
         .answer-area { display: none; }
         .answer-area .answer-box {
-            background: #f8f9fc;
-            border-radius: 10px;
-            padding: 16px;
-            line-height: 1.8;
-            font-size: 15px;
-            white-space: pre-wrap;
-            word-break: break-word;
+            background: #fff; border: 1px solid var(--border);
+            border-radius: 12px; padding: 14px 16px;
+            line-height: 1.8; font-size: 14px; white-space: pre-wrap; word-break: break-word;
         }
-        .answer-area .refs { margin-top: 16px; }
-        .answer-area .refs h3 { font-size: 14px; color: #555; margin-bottom: 8px; }
+        .answer-area .refs { margin-top: 14px; }
+        .answer-area .refs h3 { font-size: 12px; color: var(--text-2); margin-bottom: 8px; font-weight: 600; }
         .answer-area .ref-item {
-            background: #fff;
-            border-left: 3px solid #5b7fe6;
-            padding: 10px 12px;
-            margin-bottom: 8px;
-            border-radius: 0 8px 8px 0;
-            font-size: 13px;
-            color: #555;
-            line-height: 1.6;
+            background: #f8f9fc; border-left: 3px solid var(--accent);
+            padding: 9px 12px; margin-bottom: 6px; border-radius: 0 8px 8px 0;
+            font-size: 12.5px; color: #555; line-height: 1.7;
         }
-        .loading { color: #5b7fe6; font-size: 13px; margin-top: 12px; display: none; }
+
+        /* ===== 反馈 ===== */
+        .feedback-bar { margin-top: 12px; display: flex; align-items: center; gap: 8px; }
+        .fb-btn {
+            padding: 5px 13px; border: 1px solid var(--border); border-radius: 8px;
+            background: #fff; color: #666; font-size: 12.5px; cursor: pointer;
+            transition: all .15s; margin-top: 0;
+        }
+        .fb-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .fb-btn.active-like { background: #eaf7ec; border-color: #52c41a; color: #2c7a3b; }
+        .fb-btn.active-dislike { background: #fdecec; border-color: var(--danger); color: #b02a2a; }
+        .fb-tip { font-size: 12px; color: var(--text-2); }
+        .fb-reason { display: none; margin-top: 10px; }
+        .fb-reason input { width: calc(100% - 110px); max-width: 380px; }
+        .fb-reason .fb-submit { margin-top: 0; margin-left: 8px; padding: 7px 16px; }
+
+        /* ===== 提问输入区 ===== */
+        .ask-wrap { display: flex; align-items: flex-end; gap: 10px; }
+        .ask-input {
+            flex: 1; padding: 12px 14px; min-height: 52px;
+            border: 1px solid #e3e3e8; border-radius: 12px;
+            font-size: 14px; font-family: inherit; line-height: 1.6;
+            outline: none; resize: vertical; background: #fbfbfc;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        .ask-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(79,110,247,0.12); }
+        .send-btn {
+            width: 52px; height: 52px; flex-shrink: 0;
+            border: none; border-radius: 12px; margin-top: 0;
+            background: var(--accent); color: #fff; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all .15s;
+        }
+        .send-btn:hover { background: #3d5ae0; }
+        .send-btn:disabled { background: #a9b7f3; cursor: not-allowed; }
+        .send-btn svg { width: 20px; height: 20px; }
+
+        .loading { color: var(--text-2); font-size: 12px; margin-top: 10px; display: none; }
+        .msg { margin-top: 10px; font-size: 12.5px; padding: 9px 12px; border-radius: 8px; display: none; }
+        .msg.ok { display: block; background: #eaf7ec; color: #2c7a3b; }
+        .msg.err { display: block; background: #fdecec; color: #b02a2a; }
+
+        /* ===== 移动端：侧栏收为顶部 ===== */
+        @media (max-width: 760px) {
+            .layout { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; position: static; }
+            .session-list { max-height: 160px; overflow-y: auto; }
+            .bubble { max-width: 94%; }
+        }
     </style>
 </head>
 <body>
-<div class="container">
-    <header>
-        <h1>📚 知识库智能问答系统</h1>
-        <p>上传文档建立知识库 → 提问，系统基于知识库内容智能回答（RAG）</p>
-    </header>
-
-    <!-- ① 上传文档 -->
-    <div class="card">
-        <h2>① 上传文档</h2>
-        <div class="desc">把知识资料填进文本框，系统会自动切片、向量化并建立索引。</div>
-        <label>文档标题</label>
-        <input type="text" id="docTitle" placeholder="例如：Spring Boot 简介">
-        <label>文档内容</label>
-        <textarea id="docContent" placeholder="把文档正文粘贴到这里……"></textarea>
-        <button id="btnUpload">上传并建立索引</button>
-        <div class="msg" id="uploadMsg"></div>
-    </div>
-
-    <!-- ② 提问 -->
-    <div class="card">
-        <h2>② 提问</h2>
-        <div class="desc">输入问题，系统先从知识库检索相关内容，再由 AI 基于资料回答。</div>
-        <label>你的问题</label>
-        <input type="text" id="question" placeholder="例如：Spring Boot 能做什么？">
-        <button id="btnAsk">提问</button>
-        <div class="loading" id="loading">AI 思考中，请稍候……（首次调用可能需要几秒）</div>
-        <div class="msg" id="askMsg"></div>
-    </div>
-
-    <!-- ③ 答案展示 -->
-    <div class="card answer-area" id="answerArea">
-        <h2>③ 回答</h2>
-        <div class="answer-box" id="answerBox"></div>
-        <div class="refs">
-            <h3>📎 检索到的参考资料</h3>
-            <div id="refList"></div>
+<div class="layout">
+    <!-- ===== 左侧栏 ===== -->
+    <aside class="sidebar">
+        <div class="side-logo">
+            <div class="logo-badge">KB</div>
+            <div>知识库问答<small>RAG Knowledge Base</small></div>
         </div>
-    </div>
+
+        <button class="side-new" id="btnNewSession">＋ 新建会话</button>
+        <div class="session-list" id="sessionList"></div>
+
+        <div class="side-user">
+            <div class="avatar" id="sideAvatar">?</div>
+            <div class="user-name" id="sideUserName">加载中…</div>
+            <button class="logout" id="btnLogout">退出</button>
+        </div>
+    </aside>
+
+    <!-- ===== 右侧主区 ===== -->
+    <main class="main">
+        <div class="container">
+            <header>
+                <h1>知识库智能问答</h1>
+                <p>基于企业知识库，AI 根据你的资料智能回答</p>
+                <div class="cur-conv" id="curConvName"></div>
+            </header>
+
+            <!-- ① 对话区 -->
+            <div class="card">
+                <h2>对话</h2>
+                <div class="desc" style="margin-bottom:12px;">切换左侧会话查看历史记录</div>
+                <div class="chat-flow" id="chatFlow">
+                    <div class="chat-empty" id="chatEmpty">选择或新建一个会话，开始提问</div>
+                </div>
+
+                <!-- 新回答（含参考与反馈） -->
+                <div class="answer-area" id="answerArea" style="margin-top:14px;">
+                    <div class="answer-box" id="answerBox"></div>
+                    <div class="refs">
+                        <h3>参考片段</h3>
+                        <div id="refList"></div>
+                    </div>
+                    <div class="feedback-bar">
+                        <button class="fb-btn" id="btnLike">有帮助</button>
+                        <button class="fb-btn" id="btnDislike">没帮助</button>
+                        <span class="fb-tip" id="fbTip"></span>
+                    </div>
+                    <div class="fb-reason" id="fbReason">
+                        <input type="text" id="fbReasonInput" placeholder="选填：告诉系统哪里不好">
+                        <button class="btn fb-submit" id="fbReasonSubmit">提交</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ③ 提问输入 -->
+            <div class="card">
+                <div class="ask-wrap">
+                    <textarea class="ask-input" id="question" placeholder="输入你的问题，Enter 发送，Shift+Enter 换行…"></textarea>
+                    <button class="send-btn" id="btnAsk" title="发送">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                    </button>
+                </div>
+                <div class="loading" id="loading">AI 思考中…</div>
+                <div class="msg" id="askMsg"></div>
+            </div>
+        </div>
+    </main>
 </div>
 
 <script>
-    // 接口地址：前端和 Spring Boot 同源，直接写相对路径即可
-    const API_DOC = "/api/rag/document";   // 上传文档（POST）
-    const API_ASK = "/api/rag/ask";        // 提问（GET）
+    // ===== 接口地址 =====
+    const API_ASK_STREAM = "/api/rag/ask/stream";
+    const API_FEEDBACK = "/api/rag/feedback";
+    const API_AUTH = "/api/auth";
+    const API_CONV = "/api/conversation";
 
-    // ===== 上传文档 =====
-    document.getElementById("btnUpload").addEventListener("click", async () => {
-        const title = document.getElementById("docTitle").value.trim();
-        const content = document.getElementById("docContent").value.trim();
-        const msg = document.getElementById("uploadMsg");
-        msg.className = "msg";
-        msg.style.display = "none";
+    // ===== 状态 =====
+    const TOKEN_KEY = "rag_token";
+    const currentUser = { id: null, username: "", nickname: "" };
+    let currentConvId = null;
+    let convList = [];
+    let currentQuestion = "";
+    let currentAnswer = "";
+    let currentFeedbackType = "";
 
-        if (!title || !content) {
-            msg.className = "msg err";
-            msg.textContent = "请先填写标题和内容";
-            msg.style.display = "block";
-            return;
-        }
+    function getToken() { return localStorage.getItem(TOKEN_KEY) || ""; }
+    function authHeaders() {
+        const h = { "Content-Type": "application/json" };
+        if (getToken()) h["Authorization"] = "Bearer " + getToken();
+        return h;
+    }
+    function escapeHtml(s) {
+        return s.replace(/[&<>"']/g, c => ({
+            "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        }[c]));
+    }
 
-        const btn = document.getElementById("btnUpload");
-        btn.disabled = true;
-        btn.textContent = "正在上传…";
+    // ===== 登录校验 =====
+    async function initAuth() {
+        if (!getToken()) { window.location.href = "login.html"; return; }
         try {
-            // POST 请求：把标题和内容以 JSON 发给后端
-            const resp = await fetch(API_DOC, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title: title, content: content })
+            const resp = await fetch(API_AUTH + "/me", { headers: authHeaders() });
+            const data = await resp.json();
+            if (data.code === 200 && data.data) {
+                currentUser.id = data.data.id;
+                currentUser.username = data.data.username;
+                currentUser.nickname = data.data.nickname || data.data.username;
+                document.getElementById("sideUserName").textContent = currentUser.nickname;
+                document.getElementById("sideAvatar").textContent = currentUser.nickname.charAt(0).toUpperCase();
+                loadConversations();
+            } else {
+                localStorage.removeItem(TOKEN_KEY);
+                window.location.href = "login.html";
+            }
+        } catch (e) {
+            document.getElementById("sideUserName").textContent = "后端未连接";
+            document.getElementById("sessionList").innerHTML =
+                '<div class="session-empty">无法连接后端服务<br>请先启动 Spring Boot</div>';
+        }
+    }
+
+    // ===== 会话列表 =====
+    async function loadConversations() {
+        const listEl = document.getElementById("sessionList");
+        try {
+            const resp = await fetch(API_CONV + "/list", { headers: authHeaders() });
+            const data = await resp.json();
+            if (data.code === 401) { logoutAndRedirect(); return; }
+            if (data.code !== 200) {
+                listEl.innerHTML = '<div class="session-empty">加载失败</div>';
+                return;
+            }
+            convList = data.data || [];
+            if (convList.length === 0) {
+                listEl.innerHTML = '<div class="session-empty">还没有会话<br>点上方「＋ 新建会话」开始</div>';
+                document.getElementById("curConvName").textContent = "";
+                renderEmptyChat();
+                return;
+            }
+            if (!convList.some(c => c.id === currentConvId)) currentConvId = convList[0].id;
+            listEl.innerHTML = "";
+            convList.forEach(c => {
+                const div = document.createElement("div");
+                div.className = "session-item" + (currentConvId === c.id ? " active" : "");
+                div.innerHTML = '<span class="title">' + escapeHtml(c.title || "新会话") + '</span>' +
+                                '<span class="del">✕</span>';
+                div.onclick = (e) => {
+                    if (e.target.className === "del") { deleteConv(c.id); return; }
+                    selectConv(c.id);
+                };
+                listEl.appendChild(div);
+            });
+            selectConv(currentConvId);
+        } catch (e) {
+            listEl.innerHTML = '<div class="session-empty">加载会话失败</div>';
+        }
+    }
+
+    /** 向对话流加一条气泡 */
+    function addBubble(role, content) {
+        const flow = document.getElementById("chatFlow");
+        const empty = document.getElementById("chatEmpty");
+        if (empty) empty.style.display = "none";
+        const div = document.createElement("div");
+        div.className = "bubble " + role;
+        div.innerHTML = '<div class="who">' + (role === "user" ? "我" : "AI") + '</div>';
+        const text = document.createElement("div");
+        text.textContent = content;
+        div.appendChild(text);
+        flow.appendChild(div);
+        flow.scrollTop = flow.scrollHeight;
+    }
+
+    function renderEmptyChat() {
+        document.getElementById("chatFlow").innerHTML =
+            '<div class="chat-empty" id="chatEmpty">选择或新建一个会话，开始提问</div>';
+        document.getElementById("answerArea").style.display = "none";
+        currentAnswer = "";
+    }
+
+    // ===== 切换会话 =====
+    async function selectConv(convId) {
+        currentConvId = convId;
+        document.querySelectorAll(".session-item").forEach(el => el.classList.remove("active"));
+        const items = document.getElementById("sessionList").children;
+        for (let i = 0; i < items.length; i++) {
+            const c = convList[i];
+            if (c && c.id === convId) items[i].classList.add("active");
+        }
+        const conv = convList.find(c => c.id === convId);
+        document.getElementById("curConvName").textContent = conv ? (conv.title || "新会话") : "";
+        document.getElementById("askMsg").style.display = "none";
+        document.getElementById("answerArea").style.display = "none";
+        currentAnswer = "";
+
+        try {
+            const resp = await fetch(API_CONV + "/" + convId + "/messages", { headers: authHeaders() });
+            const data = await resp.json();
+            const flow = document.getElementById("chatFlow");
+            flow.innerHTML = "";
+            if (data.code === 200 && data.data && data.data.length > 0) {
+                data.data.forEach(m => addBubble(m.role === "user" ? "user" : "assistant", m.content));
+            } else {
+                renderEmptyChat();
+            }
+        } catch (e) { renderEmptyChat(); }
+    }
+
+    // ===== 新建会话 =====
+    async function newConversation() {
+        try {
+            const resp = await fetch(API_CONV, {
+                method: "POST", headers: authHeaders(),
+                body: JSON.stringify({ title: "新会话" })
             });
             const data = await resp.json();
             if (data.code === 200) {
-                msg.className = "msg ok";
-                msg.textContent = "✅ 上传成功！文档「" + title + "」已切片并建立索引，可以提问了。";
-                document.getElementById("docContent").value = ""; // 清空内容
-            } else {
-                msg.className = "msg err";
-                msg.textContent = "上传失败：" + (data.message || "未知错误");
+                currentConvId = data.data.id;
+                document.getElementById("curConvName").textContent = "新会话";
+                renderEmptyChat();
+                loadConversations();
             }
-        } catch (e) {
-            msg.className = "msg err";
-            msg.textContent = "请求失败，请确认后端服务已启动：" + e.message;
-        } finally {
-            btn.disabled = false;
-            btn.textContent = "上传并建立索引";
-        }
-        msg.style.display = "block";
-    });
+        } catch (e) { /* 忽略 */ }
+    }
 
-    // ===== 提问 =====
-    document.getElementById("btnAsk").addEventListener("click", async () => {
-        const question = document.getElementById("question").value.trim();
-        const loading = document.getElementById("loading");
-        const msg = document.getElementById("askMsg");
-        msg.style.display = "none";
-        loading.style.display = "none";
-
-        if (!question) {
-            msg.className = "msg err";
-            msg.textContent = "请先输入问题";
-            msg.style.display = "block";
-            return;
-        }
-
-        const btn = document.getElementById("btnAsk");
-        btn.disabled = true;
-        loading.style.display = "block";
+    // ===== 删除会话 =====
+    async function deleteConv(convId) {
+        if (!confirm("确定删除这个会话吗？里面的消息也会删除。")) return;
         try {
-            // GET 请求：问题作为 URL 参数传给后端
-            const resp = await fetch(API_ASK + "?question=" + encodeURIComponent(question));
+            const resp = await fetch(API_CONV + "/" + convId, {
+                method: "DELETE", headers: authHeaders()
+            });
             const data = await resp.json();
             if (data.code === 200) {
-                showAnswer(data.data);
-            } else {
-                msg.className = "msg err";
-                msg.textContent = "提问失败：" + (data.message || "未知错误");
-                msg.style.display = "block";
+                currentConvId = null;
+                loadConversations();
             }
+        } catch (e) { /* 忽略 */ }
+    }
+
+    // ===== 退出 =====
+    async function logoutAndRedirect() {
+        try { await fetch(API_AUTH + "/logout", { method: "POST", headers: authHeaders() }); } catch (e) {}
+        localStorage.removeItem(TOKEN_KEY);
+        window.location.href = "login.html";
+    }
+
+    document.getElementById("btnNewSession").addEventListener("click", newConversation);
+    document.getElementById("btnLogout").addEventListener("click", logoutAndRedirect);
+
+    // ===== 提问（流式） =====
+    async function ask(question) {
+        const loading = document.getElementById("loading");
+        const msg = document.getElementById("askMsg");
+        msg.style.display = "none"; loading.style.display = "block";
+
+        if (!currentConvId) {
+            await newConversation();
+            if (!currentConvId) return;
+        }
+
+        // 用户问题立即进对话流
+        addBubble("user", question);
+
+        const answerBox = document.getElementById("answerBox");
+        const refList = document.getElementById("refList");
+        document.getElementById("answerArea").style.display = "block";
+        answerBox.textContent = "AI 思考中…";
+        refList.innerHTML = "";
+        currentQuestion = question;
+        currentAnswer = "";
+        currentFeedbackType = "";
+        document.getElementById("fbTip").textContent = "";
+        document.getElementById("fbReason").style.display = "none";
+        document.getElementById("btnLike").className = "fb-btn";
+        document.getElementById("btnDislike").className = "fb-btn";
+
+        try {
+            const url = API_ASK_STREAM + "?question=" + encodeURIComponent(question)
+                       + "&conversationId=" + currentConvId;
+            const resp = await fetch(url, { headers: authHeaders() });
+            if (!resp.ok) {
+                msg.className = "msg err"; msg.textContent = "提问失败：" + resp.status;
+                msg.style.display = "block"; return;
+            }
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let buffer = ""; let answerText = "";
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                let idx;
+                while ((idx = buffer.indexOf("\n\n")) >= 0) {
+                    const event = buffer.slice(0, idx);
+                    buffer = buffer.slice(idx + 2);
+                    const line = event.split("\n").find(l => l.startsWith("data:"));
+                    if (!line) continue;
+                    const payload = JSON.parse(line.slice(5).trim());
+                    if (payload.type === "delta") {
+                        answerText += payload.content;
+                        answerBox.textContent = answerText;
+                        currentAnswer = answerText;
+                    } else if (payload.type === "refs") {
+                        refList.innerHTML = "";
+                        (payload.content || []).forEach(r => {
+                            const div = document.createElement("div");
+                            div.className = "ref-item"; div.textContent = r;
+                            refList.appendChild(div);
+                        });
+                    } else if (payload.type === "error") {
+                        msg.className = "msg err"; msg.textContent = "提问出错：" + payload.content;
+                        msg.style.display = "block";
+                    }
+                }
+            }
+            if (!answerText) answerBox.textContent = "（没有生成内容，请检查后端日志）";
         } catch (e) {
-            msg.className = "msg err";
-            msg.textContent = "请求失败，请确认后端服务已启动：" + e.message;
+            msg.className = "msg err"; msg.textContent = "请求失败：" + e.message;
             msg.style.display = "block";
         } finally {
-            btn.disabled = false;
             loading.style.display = "none";
+            if (currentConvId) { loadConversations(); selectConv(currentConvId); }
+        }
+    }
+
+    document.getElementById("btnAsk").addEventListener("click", () => {
+        const q = document.getElementById("question").value.trim();
+        if (!q) return;
+        document.getElementById("question").value = "";
+        ask(q);
+    });
+    // Enter 发送，Shift+Enter 换行
+    document.getElementById("question").addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            document.getElementById("btnAsk").click();
         }
     });
 
-    // ===== 展示答案：把"答案 + 参考片段"拆开显示 =====
-    function showAnswer(text) {
-        document.getElementById("answerArea").style.display = "block";
-        // 后端返回格式：答案 + "\n\n--- 参考的知识片段 ---\n" + 片段列表
-        const marker = "--- 参考的知识片段 ---";
-        let answer = text;
-        let refs = [];
-        const idx = text.indexOf(marker);
-        if (idx >= 0) {
-            answer = text.substring(0, idx).trim();
-            const refBlock = text.substring(idx + marker.length).trim();
-            // 每行以 "· " 开头，去掉前缀作为一条参考
-            refs = refBlock.split("\n")
-                .map(s => s.replace(/^·\s*/, "").trim())
-                .filter(s => s.length > 0);
+    // ===== 点赞 =====
+    document.getElementById("btnLike").addEventListener("click", () => {
+        const btn = document.getElementById("btnLike");
+        const dislikeBtn = document.getElementById("btnDislike");
+        if (currentFeedbackType === "like") {
+            currentFeedbackType = ""; btn.className = "fb-btn";
+            document.getElementById("fbTip").textContent = "已取消点赞"; return;
         }
-        document.getElementById("answerBox").textContent = answer;
-        const refList = document.getElementById("refList");
-        refList.innerHTML = "";
-        refs.forEach(r => {
-            const div = document.createElement("div");
-            div.className = "ref-item";
-            div.textContent = r;
-            refList.appendChild(div);
-        });
-        // 滚动到答案区
-        document.getElementById("answerArea").scrollIntoView({ behavior: "smooth" });
+        if (!currentAnswer) { document.getElementById("fbTip").textContent = "请先提问再反馈"; return; }
+        currentFeedbackType = "like";
+        btn.className = "fb-btn active-like"; dislikeBtn.className = "fb-btn";
+        document.getElementById("fbReason").style.display = "none";
+        document.getElementById("fbTip").textContent = "";
+        submitFeedback("like", "");
+    });
+
+    // ===== 点踩 =====
+    document.getElementById("btnDislike").addEventListener("click", () => {
+        const btn = document.getElementById("btnDislike");
+        const likeBtn = document.getElementById("btnLike");
+        if (currentFeedbackType === "dislike") {
+            currentFeedbackType = ""; btn.className = "fb-btn";
+            document.getElementById("fbTip").textContent = "已取消点踩"; return;
+        }
+        if (!currentAnswer) { document.getElementById("fbTip").textContent = "请先提问再反馈"; return; }
+        currentFeedbackType = "dislike";
+        btn.className = "fb-btn active-dislike"; likeBtn.className = "fb-btn";
+        document.getElementById("fbReason").style.display = "block";
+        document.getElementById("fbTip").textContent = "";
+    });
+
+    document.getElementById("fbReasonSubmit").addEventListener("click", () => {
+        const reason = document.getElementById("fbReasonInput").value.trim();
+        document.getElementById("fbReason").style.display = "none";
+        document.getElementById("fbReasonInput").value = "";
+        submitFeedback("dislike", reason);
+    });
+
+    async function submitFeedback(type, reason) {
+        try {
+            const resp = await fetch(API_FEEDBACK, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ question: currentQuestion, answer: currentAnswer, type: type, reason: reason })
+            });
+            const data = await resp.json();
+            const tip = document.getElementById("fbTip");
+            if (data.code === 200) {
+                tip.textContent = type === "like" ? "感谢反馈" : "已提交，管理员会改进检索效果";
+            } else {
+                tip.textContent = "反馈失败：" + (data.message || "未知错误");
+            }
+        } catch (e) {
+            document.getElementById("fbTip").textContent = "反馈失败：" + e.message;
+        }
     }
+
+    // ===== 启动 =====
+    initAuth();
 </script>
 </body>
 </html>

@@ -94,6 +94,37 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
+
+        <!--
+            ===== 第 4 步新增：多格式文档解析依赖 =====
+        -->
+        <!-- PDFBox：解析 PDF 文件，把 PDF 里的文字提取出来（3.x 版本，兼容 Java 21） -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+        </dependency>
+
+        <!--
+            Apache POI：解析 Word(.docx) 和 Excel(.xlsx) 文件。
+            poi-ooxml 是"新版 Office 格式"支持包（Word/Excel 都是它管）
+        -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
+        <!--
+            ===== 第 5 步新增：用户登录体系依赖 =====
+            spring-security-crypto：只引入"密码加密"工具（BCrypt），
+            不引入整个 Spring Security（那套登录流程对新手太重了）。
+            BCrypt 是行业标准密码哈希算法：防破解、防彩虹表。
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

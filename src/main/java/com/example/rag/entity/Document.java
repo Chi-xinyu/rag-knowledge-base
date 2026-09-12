@@ -36,6 +36,9 @@ public class Document {
     /** 状态：0未索引 1已索引（对应 status 列） */
     private Integer status;
 
+    /** 所属知识库 ID（管理员端第 6 步新增，可空=未归类） */
+    private Long knowledgeBaseId;
+
     /** 创建时间（对应 create_time 列） */
     private LocalDateTime createTime;
 

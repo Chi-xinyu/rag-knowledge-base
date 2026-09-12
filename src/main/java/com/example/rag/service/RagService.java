@@ -33,16 +33,19 @@ public class RagService {
     private final AiProperties aiProperties;
 
     /**
-     * 【建索引】上传一篇文档（title + content），
+     * 【建索引】上传一篇文档（title + content + 文件类型），
      * 保存到 document 表，然后切片+向量化存进向量表。
+     * @param title 文档标题
+     * @param content 文档正文
+     * @param fileType 文件类型（txt/pdf/docx/xlsx/md，第 4 步起记录真实类型）
      * @return 保存后的文档（带 ID）
      */
-    public Document addDocument(String title, String content) {
+    public Document addDocument(String title, String content, String fileType) {
         // 1. 先存文档基本信息
         Document doc = new Document();
         doc.setTitle(title);
         doc.setContent(content);
-        doc.setFileType("txt");
+        doc.setFileType(fileType);
         doc.setStatus(0); // 0=未索引（随后置 1）
         documentMapper.insert(doc);
 
@@ -81,5 +84,34 @@ public class RagService {
             sb.append("· ").append(c.getContent()).append("\n");
         }
         return sb.toString();
+    }
+
+    /**
+     * 【问答 · 流式版】——第 4 步新增。给 SSE 接口用。
+     *
+     * 和 ask() 的区别：答案不是一次性返回，而是大模型生成一个字，
+     * 就通过 onDelta 回调一次，前端拿到后逐字显示（打字机效果）。
+     *
+     * @param question 用户问题
+     * @param onDelta  每生成一段文字回调一次
+     * @return 检索到的参考片段（让前端在回答前先展示"引用了哪些资料"）
+     */
+    public List<DocumentChunk> askStream(String question, java.util.function.Consumer<String> onDelta) {
+        // ---- 第 3 步：语义检索（和 ask() 相同）----
+        List<DocumentChunk> topChunks = vectorStoreService.search(question, aiProperties.getTopK());
+
+        // 库为空：直接回调一段提示文字，不调用大模型
+        if (topChunks.isEmpty()) {
+            onDelta.accept("知识库中还没有内容，请先上传文档。");
+            return topChunks;
+        }
+
+        // ---- 第 4 步：拼上下文，流式生成 ----
+        String context = topChunks.stream()
+                .map(DocumentChunk::getContent)
+                .collect(Collectors.joining("\n\n"));
+
+        aiService.chatStream(question, context, onDelta);
+        return topChunks; // 把参考片段返回给调用方（Controller 转给前端）
     }
 }
